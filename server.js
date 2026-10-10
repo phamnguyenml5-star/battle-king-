@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -17,16 +16,18 @@ const rooms = new Map();
 const publicDir = path.join(__dirname, 'public');
 const indexFile = path.join(publicDir, 'index.html');
 
+const SKILLS = {
+  Q: { damage: 35, rangeX: 180, rangeY: 110, cooldown: 3000 },
+  R: { damage: 45, rangeX: 150, rangeY: 140, cooldown: 5000 },
+  E: { damage: 25, rangeX: 260, rangeY: 120, cooldown: 4000 },
+  F: { damage: 55, rangeX: 200, rangeY: 160, cooldown: 8000 }
+};
+
 app.use(express.static(publicDir));
 
 app.get('/', (_req, res) => {
-  if (fs.existsSync(indexFile)) {
-    return res.sendFile(indexFile);
-  }
-
-  res.status(500).send(
-    'Missing public/index.html. Please upload your game HTML file to the public folder.'
-  );
+  if (fs.existsSync(indexFile)) return res.sendFile(indexFile);
+  res.status(500).send('Missing public/index.html.');
 });
 
 app.get('/health', (_req, res) => {
@@ -82,6 +83,54 @@ function leaveRoom(socket) {
   emitPlayers(code);
 }
 
+function respawnPlayer(code, id) {
+  const room = rooms.get(code);
+  const player = room && room.players.get(id);
+  if (!player || player.hp > 0) return;
+
+  player.hp = 100;
+  player.x = 120 + Math.random() * 80;
+  player.y = 200;
+
+  io.to(code).emit('pvp:respawn', { id, hp: player.hp });
+  emitPlayers(code);
+}
+
+function damagePlayer(code, attackerId, targetId, damage, skill) {
+  const room = rooms.get(code);
+  if (!room || room.mode !== 'pvp') return false;
+
+  const attacker = room.players.get(attackerId);
+  const target = room.players.get(targetId);
+
+  if (!attacker || !target || attackerId === targetId) return false;
+  if (target.hp <= 0) return false;
+
+  target.hp = Math.max(0, target.hp - damage);
+
+  io.to(targetId).emit('pvp:hit', {
+    hp: target.hp,
+    from: attackerId,
+    skill: skill || null
+  });
+
+  io.to(code).emit('pvp:damage', {
+    attackerId,
+    targetId,
+    damage,
+    hp: target.hp,
+    skill: skill || null
+  });
+
+  emitPlayers(code);
+
+  if (target.hp <= 0) {
+    setTimeout(() => respawnPlayer(code, targetId), 1800);
+  }
+
+  return true;
+}
+
 io.on('connection', socket => {
   socket.data.roomCode = null;
 
@@ -107,7 +156,8 @@ io.on('connection', socket => {
       face: 1,
       sitting: false,
       hp: 100,
-      lastAttack: 0
+      lastAttack: 0,
+      skillTimes: {}
     });
 
     socket.join(code);
@@ -131,12 +181,9 @@ io.on('connection', socket => {
     }
 
     if (data.mode && data.mode !== room.mode) {
-      socket.emit(
-        'room:error',
-        room.mode === 'pvp'
-          ? 'Đây là phòng PvP. Hãy vào từ nút PvP.'
-          : 'Đây là phòng Phố Hazen. Hãy vào từ nút Phố Hazen Online.'
-      );
+      socket.emit('room:error', room.mode === 'pvp'
+        ? 'Đây là phòng PvP. Hãy vào từ nút PvP.'
+        : 'Đây là phòng Phố Hazen. Hãy vào từ nút Phố Hazen Online.');
       return;
     }
 
@@ -150,7 +197,8 @@ io.on('connection', socket => {
       face: 1,
       sitting: false,
       hp: 100,
-      lastAttack: 0
+      lastAttack: 0,
+      skillTimes: {}
     });
 
     socket.join(code);
@@ -167,7 +215,6 @@ io.on('connection', socket => {
     const code = socket.data.roomCode;
     const room = rooms.get(code);
     const player = room && room.players.get(socket.id);
-
     if (!player) return;
 
     player.x = Math.max(0, Math.min(10000, Number(data.x) || 0));
@@ -176,14 +223,12 @@ io.on('connection', socket => {
     player.sitting = !!data.sitting;
 
     if (room.mode === 'chill') player.hp = 100;
-
     emitPlayers(code);
   });
 
   socket.on('chat:send', (data = {}) => {
     const code = socket.data.roomCode;
     const room = rooms.get(code);
-
     if (!room) return;
 
     const text = String(data.text || '').trim().slice(0, 180);
@@ -199,53 +244,72 @@ io.on('connection', socket => {
   socket.on('pvp:attack', () => {
     const code = socket.data.roomCode;
     const room = rooms.get(code);
-
     if (!room || room.mode !== 'pvp') return;
 
     const attacker = room.players.get(socket.id);
-
     if (!attacker || Date.now() - attacker.lastAttack < 400) return;
-
     attacker.lastAttack = Date.now();
 
     for (const [id, target] of room.players) {
-      if (id === socket.id) continue;
+      if (id === socket.id || target.hp <= 0) continue;
 
       if (
         Math.abs(attacker.x - target.x) < 100 &&
         Math.abs(attacker.y - target.y) < 100
       ) {
-        target.hp = Math.max(0, target.hp - 22);
-
-        io.to(id).emit('pvp:hit', {
-          hp: target.hp,
-          from: socket.id
-        });
-
-        emitPlayers(code);
-
-        if (target.hp <= 0) {
-          setTimeout(() => {
-            const current = rooms.get(code)?.players.get(id);
-
-            if (current) {
-              current.hp = 100;
-              current.x = 120 + Math.random() * 80;
-              current.y = 200;
-
-              io.to(code).emit('pvp:respawn', {
-                id,
-                hp: 100
-              });
-
-              emitPlayers(code);
-            }
-          }, 1800);
-        }
-
+        damagePlayer(code, socket.id, id, 22, null);
         break;
       }
     }
+  });
+
+  socket.on('pvp:skill', (data = {}) => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+    if (!room || room.mode !== 'pvp') return;
+
+    const attacker = room.players.get(socket.id);
+    if (!attacker || attacker.hp <= 0) return;
+
+    const skillKey = String(data.skill || data.key || '').toUpperCase();
+    const skill = SKILLS[skillKey];
+    if (!skill) return;
+
+    const now = Date.now();
+    const lastUsed = attacker.skillTimes[skillKey] || 0;
+    const remaining = skill.cooldown - (now - lastUsed);
+
+    if (remaining > 0) {
+      socket.emit('pvp:skill:cooldown', {
+        skill: skillKey,
+        remaining
+      });
+      return;
+    }
+
+    attacker.skillTimes[skillKey] = now;
+
+    const hitTargets = [];
+
+    for (const [id, target] of room.players) {
+      if (id === socket.id || target.hp <= 0) continue;
+
+      const dx = target.x - attacker.x;
+      const dy = Math.abs(target.y - attacker.y);
+      const inRange = Math.abs(dx) <= skill.rangeX && dy <= skill.rangeY;
+      const inFront = Math.sign(dx) === attacker.face || Math.abs(dx) < 25;
+
+      if (inRange && inFront) {
+        damagePlayer(code, socket.id, id, skill.damage, skillKey);
+        hitTargets.push(id);
+      }
+    }
+
+    socket.emit('pvp:skill:result', {
+      skill: skillKey,
+      hitTargets,
+      cooldown: skill.cooldown
+    });
   });
 
   socket.on('room:leave', () => leaveRoom(socket));
