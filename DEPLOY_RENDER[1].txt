@@ -1,0 +1,18 @@
+BATTLE KING HAZEN — DEPLOY ONLINE
+
+T cần chủ tài khoản của m bấm đăng nhập/cho phép hosting. T không thể đăng nhập hoặc tạo tài khoản thay m từ trong chat.
+
+Cách đưa game lên mạng bằng Render:
+1. Giải nén ZIP này.
+2. Tạo một repository GitHub mới và tải toàn bộ NỘI DUNG bên trong thư mục Battle_King_Hazen_Online_Server lên repository (server.js, package.json, render.yaml, public/).
+3. Mở https://render.com/ và đăng nhập bằng tài khoản của m/người giám hộ nếu cần.
+4. Chọn New > Blueprint (hoặc tạo Web Service), kết nối repository vừa tạo.
+5. Nếu dùng Blueprint, Render đọc render.yaml tự cấu hình. Nếu tạo Web Service thủ công: Runtime Node, Build Command `npm install`, Start Command `npm start`.
+6. Chờ deploy thành công rồi mở URL HTTPS dạng https://....onrender.com
+7. Gửi đúng URL đó cho bạn bè. Mọi người mở cùng URL, chọn PvP hoặc Phố Hazen Online rồi nhập cùng mã phòng 6 số.
+
+Lưu ý:
+- Không gửi mật khẩu, mã đăng nhập hoặc thông tin riêng tư cho bất kỳ ai.
+- Gói miễn phí có thể ngủ khi không dùng; lần mở đầu tiên có thể chậm.
+- Đây là server khởi đầu. Mã phòng tạm thời mất khi server khởi động lại; chế độ ADMIN phía trình duyệt chưa an toàn cho phát hành công khai.
+- Sau deploy, thử bằng 2 trình duyệt/thiết bị trước khi chia sẻ rộng.

@@ -1,0 +1,14 @@
+{
+  "name": "battle-king-hazen-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Battle King Hazen multiplayer rooms for PvP and Ph\u1ed1 Hazen",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
